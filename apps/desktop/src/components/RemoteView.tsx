@@ -1,6 +1,6 @@
 import React, { useRef, useEffect } from 'react';
-import { motion } from 'framer-motion';
-import { Play, Pause, XCircle, Monitor } from 'lucide-react';
+
+import { Pause, XCircle, Monitor } from 'lucide-react';
 
 interface RemoteViewProps {
   stream: MediaStream | null;

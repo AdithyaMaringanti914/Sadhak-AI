@@ -8,7 +8,7 @@ import RemoteView from './components/RemoteView';
 import DashboardPage from './pages/DashboardPage';
 import LogsPage from './pages/LogsPage';
 import SettingsPage from './pages/SettingsPage';
-import { motion, AnimatePresence } from 'framer-motion';
+import { AnimatePresence } from 'framer-motion';
 import { useSessionStore } from './store/sessionStore';
 import { WebRTCService } from './services/WebRTCService';
 
@@ -16,7 +16,7 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   
-  const { sessionId, role, status, actionPlan, taskPrompt, riskScore, setSession, resetSession } = useSessionStore();
+  const { role, status, actionPlan, taskPrompt, riskScore, setSession, resetSession } = useSessionStore();
   const webrtcRef = useRef<WebRTCService | null>(null);
 
   useEffect(() => {

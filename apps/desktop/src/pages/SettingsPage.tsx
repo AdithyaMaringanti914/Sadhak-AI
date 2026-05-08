@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { Shield, Monitor, Sparkles, Bell, Eye } from 'lucide-react';
+import { Shield, Monitor, Sparkles } from 'lucide-react';
 
 const SettingsPage: React.FC = () => {
   return (
