@@ -32,5 +32,12 @@ jobs:
       - name: Build and Package Electron App
         working-directory: apps/desktop
         run: npm run package
+
+      - name: Release to GitHub
+        uses: softprops/action-gh-release@v2
+        with:
+          files: apps/desktop/release/*.exe
+          draft: false
+          prerelease: false
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
