@@ -1,9 +1,9 @@
-import { GoogleGenAI, Type } from '@google/genai';
+import OpenAI from 'openai';
 import dotenv from 'dotenv';
 
 dotenv.config();
 
-let ai: GoogleGenAI | null = null;
+let openai: OpenAI | null = null;
 
 export interface WorkflowStep {
   id: string;
@@ -23,8 +23,8 @@ export interface ActionPlan {
 
 export class AIService {
   static async decomposeTask(prompt: string): Promise<ActionPlan> {
-    if (!process.env.GEMINI_API_KEY || process.env.GEMINI_API_KEY === 'your-gemini-api-key-here') {
-      console.warn("GEMINI_API_KEY missing. Returning mock plan.");
+    if (!process.env.OPENROUTER_API_KEY || process.env.OPENROUTER_API_KEY === 'your-openrouter-api-key-here') {
+      console.warn("OPENROUTER_API_KEY missing. Returning mock plan.");
       return {
         steps: [
           {
@@ -35,79 +35,54 @@ export class AIService {
             risk_level: 'LOW',
             requires_consent: false,
             requires_credentials: false
-          },
-          {
-            id: '2',
-            title: 'User Authentication',
-            description: 'Please enter your password locally when prompted.',
-            action_type: 'LOCAL_INPUT',
-            risk_level: 'LOW',
-            requires_consent: true,
-            requires_credentials: true
-          },
-          {
-            id: '3',
-            title: 'Final Configuration',
-            description: 'Applying requested changes to the system.',
-            action_type: 'UI_INTERACTION',
-            risk_level: 'MEDIUM',
-            requires_consent: true,
-            requires_credentials: false
           }
         ],
-        overall_risk_score: 25,
-        estimated_duration: '5 minutes'
+        overall_risk_score: 10,
+        estimated_duration: '1 minute'
       };
     }
 
-    if (!ai) {
-      ai = new GoogleGenAI({
-        apiKey: process.env.GEMINI_API_KEY,
+    if (!openai) {
+      openai = new OpenAI({
+        baseURL: "https://openrouter.ai/api/v1",
+        apiKey: process.env.OPENROUTER_API_KEY,
+        defaultHeaders: {
+          "HTTP-Referer": "https://sadhak.ai", 
+          "X-Title": "Sadhak AI", 
+        }
       });
     }
 
-    const response = await ai.models.generateContent({
-      model: "gemini-2.0-flash",
-      contents: `Decompose this task: "${prompt}"`,
-      config: {
-        systemInstruction: `You are the Sadhak AI Task Orchestrator. 
+    const response = await openai.chat.completions.create({
+      model: "meta-llama/llama-3.3-70b-instruct:free",
+      messages: [
+        {
+          role: "system",
+          content: `You are the Sadhak AI Task Orchestrator. 
 Your job is to take a natural language support request and decompose it into a sequence of secure, actionable steps.
 
 Rules:
 1. Never include steps that bypass user consent.
 2. Mark steps requiring passwords as action_type: 'LOCAL_INPUT'.
 3. Assign risk levels (LOW, MEDIUM, HIGH) based on the impact of the action.
-4. Output MUST be a valid JSON object matching the ActionPlan schema.`,
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            steps: {
-              type: Type.ARRAY,
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  id: { type: Type.STRING },
-                  title: { type: Type.STRING },
-                  description: { type: Type.STRING },
-                  action_type: { type: Type.STRING, enum: ["UI_INTERACTION", "SYSTEM_COMMAND", "LOCAL_INPUT", "WAIT"] },
-                  risk_level: { type: Type.STRING, enum: ["LOW", "MEDIUM", "HIGH"] },
-                  requires_consent: { type: Type.BOOLEAN },
-                  requires_credentials: { type: Type.BOOLEAN }
-                },
-                required: ["id", "title", "description", "action_type", "risk_level", "requires_consent", "requires_credentials"]
-              }
-            },
-            overall_risk_score: { type: Type.NUMBER },
-            estimated_duration: { type: Type.STRING }
-          },
-          required: ["steps", "overall_risk_score", "estimated_duration"]
+4. Output MUST be a valid JSON object matching the ActionPlan schema: { "steps": [...], "overall_risk_score": 10, "estimated_duration": "5m" }`
+        },
+        {
+          role: "user",
+          content: `Decompose this task: "${prompt}"\nReturn ONLY raw JSON, no markdown formatting or backticks.`
         }
-      }
+      ]
     });
 
-    const content = response.text;
+    let content = response.choices[0].message.content;
     if (!content) throw new Error("AI failed to generate a plan");
+
+    // Clean up potential markdown formatting that OpenRouter models sometimes return
+    if (content.startsWith('```json')) {
+      content = content.replace(/^```json\n/, '').replace(/\n```$/, '');
+    } else if (content.startsWith('```')) {
+      content = content.replace(/^```\n/, '').replace(/\n```$/, '');
+    }
 
     return JSON.parse(content) as ActionPlan;
   }
