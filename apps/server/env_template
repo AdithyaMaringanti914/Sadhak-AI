@@ -1,0 +1,4 @@
+PORT=3001
+DATABASE_URL="file:./dev.db"
+OPENAI_API_KEY="your-openai-api-key-here"
+JWT_SECRET="sadhak-ai-secret-key-12345"
