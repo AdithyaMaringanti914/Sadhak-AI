@@ -1,9 +1,9 @@
-import OpenAI from 'openai';
+import { GoogleGenAI, Type } from '@google/genai';
 import dotenv from 'dotenv';
 
 dotenv.config();
 
-let openai: OpenAI | null = null;
+let ai: GoogleGenAI | null = null;
 
 export interface WorkflowStep {
   id: string;
@@ -23,8 +23,8 @@ export interface ActionPlan {
 
 export class AIService {
   static async decomposeTask(prompt: string): Promise<ActionPlan> {
-    if (!process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY === 'your-openai-api-key-here') {
-      console.warn("OPENAI_API_KEY missing. Returning mock plan.");
+    if (!process.env.GEMINI_API_KEY || process.env.GEMINI_API_KEY === 'your-gemini-api-key-here') {
+      console.warn("GEMINI_API_KEY missing. Returning mock plan.");
       return {
         steps: [
           {
@@ -60,35 +60,53 @@ export class AIService {
       };
     }
 
-    if (!openai) {
-      openai = new OpenAI({
-        apiKey: process.env.OPENAI_API_KEY,
+    if (!ai) {
+      ai = new GoogleGenAI({
+        apiKey: process.env.GEMINI_API_KEY,
       });
     }
 
-    const response = await openai.chat.completions.create({
-      model: "gpt-4o",
-      messages: [
-        {
-          role: "system",
-          content: `You are the Sadhak AI Task Orchestrator. 
-          Your job is to take a natural language support request and decompose it into a sequence of secure, actionable steps.
-          
-          Rules:
-          1. Never include steps that bypass user consent.
-          2. Mark steps requiring passwords as action_type: 'LOCAL_INPUT'.
-          3. Assign risk levels (LOW, MEDIUM, HIGH) based on the impact of the action.
-          4. Output MUST be a valid JSON object matching the ActionPlan schema.`
-        },
-        {
-          role: "user",
-          content: `Decompose this task: "${prompt}"`
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-pro",
+      contents: `Decompose this task: "${prompt}"`,
+      config: {
+        systemInstruction: `You are the Sadhak AI Task Orchestrator. 
+Your job is to take a natural language support request and decompose it into a sequence of secure, actionable steps.
+
+Rules:
+1. Never include steps that bypass user consent.
+2. Mark steps requiring passwords as action_type: 'LOCAL_INPUT'.
+3. Assign risk levels (LOW, MEDIUM, HIGH) based on the impact of the action.
+4. Output MUST be a valid JSON object matching the ActionPlan schema.`,
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            steps: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  id: { type: Type.STRING },
+                  title: { type: Type.STRING },
+                  description: { type: Type.STRING },
+                  action_type: { type: Type.STRING, enum: ["UI_INTERACTION", "SYSTEM_COMMAND", "LOCAL_INPUT", "WAIT"] },
+                  risk_level: { type: Type.STRING, enum: ["LOW", "MEDIUM", "HIGH"] },
+                  requires_consent: { type: Type.BOOLEAN },
+                  requires_credentials: { type: Type.BOOLEAN }
+                },
+                required: ["id", "title", "description", "action_type", "risk_level", "requires_consent", "requires_credentials"]
+              }
+            },
+            overall_risk_score: { type: Type.NUMBER },
+            estimated_duration: { type: Type.STRING }
+          },
+          required: ["steps", "overall_risk_score", "estimated_duration"]
         }
-      ],
-      response_format: { type: "json_object" }
+      }
     });
 
-    const content = response.choices[0].message.content;
+    const content = response.text;
     if (!content) throw new Error("AI failed to generate a plan");
 
     return JSON.parse(content) as ActionPlan;
