@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: sadhak-ai-server
+    env: node
+    region: ohio
+    rootDir: apps/server
+    buildCommand: npm install && npm run build && npx prisma db push
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        value: "file:./dev.db"
+      - key: JWT_SECRET
+        value: "sadhak-ai-secret-key-12345"
+      - key: OPENAI_API_KEY
+        value: "your-openai-api-key-here" # Replace this in the Render dashboard!
