@@ -67,7 +67,7 @@ export class AIService {
     }
 
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-pro",
+      model: "gemini-2.0-flash",
       contents: `Decompose this task: "${prompt}"`,
       config: {
         systemInstruction: `You are the Sadhak AI Task Orchestrator. 
