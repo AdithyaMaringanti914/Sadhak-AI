@@ -1,6 +1,10 @@
 {
   "name": "desktop",
   "private": true,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AdithyaMaringanti914/Sadhak-AI.git"
+  },
   "version": "0.0.0",
   "type": "module",
   "main": "dist-electron/main.js",

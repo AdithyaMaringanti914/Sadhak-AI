@@ -34,12 +34,3 @@ jobs:
         run: npm run package
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Release to GitHub
-        uses: softprops/action-gh-release@v2
-        with:
-          files: apps/desktop/release/*.exe
-          draft: false
-          prerelease: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
