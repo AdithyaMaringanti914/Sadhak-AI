@@ -21,15 +21,15 @@ function App() {
 
   useEffect(() => {
     const timer = setTimeout(() => setLoading(false), 3000);
-    webrtcRef.current = new WebRTCService('http://localhost:3001');
+    webrtcRef.current = new WebRTCService('https://800d-103-186-255-26.ngrok-free.app');
     return () => clearTimeout(timer);
   }, []);
 
   const handleCreateSession = async (prompt: string) => {
     try {
-      const response = await fetch('http://localhost:3001/api/sessions/create', {
+      const response = await fetch('https://800d-103-186-255-26.ngrok-free.app/api/sessions/create', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
         body: JSON.stringify({ prompt, helperId: 'demo-user' })
       });
       const data = await response.json();
@@ -52,7 +52,9 @@ function App() {
 
   const handleJoinSession = async (code: string) => {
     try {
-      const response = await fetch(`http://localhost:3001/api/sessions/${code}`);
+      const response = await fetch(`https://800d-103-186-255-26.ngrok-free.app/api/sessions/${code}`, {
+        headers: { 'ngrok-skip-browser-warning': 'true' }
+      });
       const data = await response.json();
       if (data.success) {
         setSession({

@@ -6,7 +6,11 @@ export class WebRTCService {
   private dataChannel: RTCDataChannel | null = null;
 
   constructor(serverUrl: string) {
-    this.socket = io(serverUrl);
+    this.socket = io(serverUrl, {
+      extraHeaders: {
+        'ngrok-skip-browser-warning': 'true'
+      }
+    });
   }
 
   async createOffer(sessionId: string) {
