@@ -16,7 +16,7 @@ export default defineConfig({
         vite: {
           build: {
             rollupOptions: {
-              external: ['@computer-use/nut-js'],
+              external: ['@computer-use/nut-js', 'electron-updater'],
             },
           },
         },
