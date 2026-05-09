@@ -55,7 +55,7 @@ export const getSessionByCode = async (req: Request, res: Response) => {
   try {
     const { code } = req.params;
     const session = await prisma.session.findUnique({
-      where: { code }
+      where: { code: code as string }
     });
 
     if (!session) {
