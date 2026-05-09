@@ -19,6 +19,9 @@
     "electronVersion": "42.0.0",
     "appId": "com.sadhak.ai",
     "productName": "Sadhak AI",
+    "publish": [
+      "github"
+    ],
     "directories": {
       "output": "release"
     },
@@ -37,6 +40,7 @@
     "@tailwindcss/vite": "^4.2.4",
     "autoprefixer": "^10.5.0",
     "clsx": "^2.1.1",
+    "electron-updater": "^6.8.3",
     "framer-motion": "^12.38.0",
     "lucide-react": "^1.14.0",
     "postcss": "^8.5.14",

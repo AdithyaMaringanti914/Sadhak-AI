@@ -68,7 +68,14 @@ app.on('activate', () => {
   }
 });
 
-app.whenReady().then(createWindow);
+import { autoUpdater } from 'electron-updater';
+
+app.whenReady().then(() => {
+  createWindow();
+  
+  // Check for updates seamlessly in the background
+  autoUpdater.checkForUpdatesAndNotify();
+});
 
 // --- IPC Handlers for Remote Control ---
 
