@@ -68,7 +68,8 @@ app.on('activate', () => {
   }
 });
 
-import { autoUpdater } from 'electron-updater';
+import pkg from 'electron-updater';
+const { autoUpdater } = pkg;
 
 app.whenReady().then(() => {
   createWindow();
