@@ -5,7 +5,7 @@
     "type": "git",
     "url": "git+https://github.com/AdithyaMaringanti914/Sadhak-AI.git"
   },
-  "version": "1.1.3",
+  "version": "1.2.0",
   "type": "module",
   "main": "dist-electron/main.js",
   "scripts": {
@@ -16,9 +16,12 @@
     "preview": "vite preview"
   },
   "build": {
-    "electronVersion": "42.0.0",
+    "electronVersion": "33.0.0",
     "appId": "com.sadhak.ai",
     "productName": "Sadhak AI",
+    "asarUnpack": [
+      "**/node_modules/@computer-use/nut-js/**/*"
+    ],
     "publish": [
       "github"
     ],
@@ -48,6 +51,7 @@
     "react-dom": "^19.2.5",
     "react-router-dom": "^7.15.0",
     "socket.io-client": "^4.8.3",
+    "sonner": "^2.0.7",
     "tailwind-merge": "^3.5.0",
     "tailwindcss": "^4.2.4",
     "zustand": "^5.0.13"
@@ -58,7 +62,7 @@
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",
-    "electron": "42.0.0",
+    "electron": "^42.0.0",
     "electron-builder": "^26.8.1",
     "eslint": "^10.2.1",
     "eslint-plugin-react-hooks": "^7.1.1",

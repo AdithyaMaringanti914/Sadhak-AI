@@ -12,6 +12,8 @@ services:
       - key: DATABASE_URL
         value: "file:./dev.db"
       - key: JWT_SECRET
-        value: "sadhak-ai-secret-key-12345"
-      - key: OPENAI_API_KEY
-        value: "your-openai-api-key-here" # Replace this in the Render dashboard!
+        sync: false   # Set this in the Render dashboard
+      - key: NVIDIA_API_KEY
+        sync: false   # Set this in the Render dashboard
+      - key: OPENROUTER_API_KEY
+        sync: false   # Set this in the Render dashboard

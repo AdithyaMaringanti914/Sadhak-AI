@@ -1,8 +1,5 @@
 name: Build & Release Desktop App
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
 on:
   push:
     tags:
@@ -22,16 +19,28 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 24
-        env:
-          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+          node-version: 20
+          cache: 'npm'
 
       - name: Install Monorepo Dependencies
         run: npm install
 
+      - name: Rebuild Native Modules
+        working-directory: apps/desktop
+        run: |
+          npm install
+          npx @electron/rebuild -v 33.0.0
+        env:
+          npm_config_runtime: electron
+          npm_config_target: 33.0.0
+
       - name: Build and Package Electron App
         working-directory: apps/desktop
         run: npm run package
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          npm_config_runtime: electron
+          npm_config_target: 33.0.0
 
       - name: Release to GitHub
         uses: softprops/action-gh-release@v2

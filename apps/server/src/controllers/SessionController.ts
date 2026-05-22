@@ -24,8 +24,8 @@ export const createSession = async (req: Request, res: Response) => {
     // 1. Decompose Task with AI
     const actionPlan = await AIService.decomposeTask(prompt);
 
-    // 2. Generate One-time Code
-    const sessionCode = crypto.randomBytes(3).toString('hex').toUpperCase();
+    // 2. Generate One-time Code (10 characters)
+    const sessionCode = crypto.randomBytes(5).toString('hex').toUpperCase();
 
     // 3. Save to DB
     const session = await prisma.session.create({

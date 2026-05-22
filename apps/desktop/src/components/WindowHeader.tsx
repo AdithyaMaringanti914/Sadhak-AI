@@ -3,7 +3,7 @@ import { Minus, Square, X } from 'lucide-react';
 
 const WindowHeader: React.FC = () => {
   const control = (action: 'minimize' | 'maximize' | 'close') => {
-    (window as any).electronAPI.windowControl(action);
+    (window as any).electronAPI?.windowControl(action);
   };
 
   return (

@@ -7,6 +7,14 @@
     @apply bg-background text-foreground antialiased selection:bg-primary/30 selection:text-primary;
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
   }
+
+  .drag {
+    -webkit-app-region: drag;
+  }
+
+  .no-drag {
+    -webkit-app-region: no-drag;
+  }
 }
 
 @layer components {
