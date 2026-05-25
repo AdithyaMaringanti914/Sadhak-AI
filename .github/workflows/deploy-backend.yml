@@ -1,0 +1,29 @@
+name: Deploy Backend to Render
+
+on:
+  push:
+    branches: [main]
+    paths: ["apps/server/**", "package.json", "package-lock.json"]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Trigger Deploy to Render
+        uses: fjogeleit/http-request-action@v1
+        with:
+          url: https://api.render.com/v1/services/${{ secrets.RENDER_SERVICE_ID }}/deploys
+          method: POST
+          headers: |
+            {
+              "Authorization": "Bearer ${{ secrets.RENDER_API_KEY }}",
+              "Content-Type": "application/json"
+            }
+          data: |
+            {
+              "clearCache": false
+            }
