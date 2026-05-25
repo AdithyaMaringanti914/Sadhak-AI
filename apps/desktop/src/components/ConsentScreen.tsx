@@ -1,19 +1,70 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Shield, AlertTriangle, CheckCircle2, XCircle, Loader2 } from 'lucide-react';
+import {
+  Shield,
+  AlertTriangle,
+  CheckCircle2,
+  XCircle,
+  Loader2,
+  Eye,
+  Pointer,
+  Sparkles,
+  ShieldCheck,
+} from 'lucide-react';
+import type { SessionPermissions } from '../store/sessionStore';
 
 interface ConsentScreenProps {
   session: {
-    taskPrompt: string;
-    actionPlan: any[];
+    taskPrompt: string | null;
+    requestedPermissions: SessionPermissions;
     riskScore: number;
   };
-  onApprove: () => void;
+  onApprove: (permissions: SessionPermissions) => void | Promise<void>;
   onDeny: () => void;
+  isConnecting: boolean;
 }
 
-const ConsentScreen: React.FC<ConsentScreenProps> = ({ session, onApprove, onDeny }) => {
-  const [isConnecting, setIsConnecting] = useState(false);
+const permissionMeta: Array<{
+  key: keyof SessionPermissions;
+  title: string;
+  description: string;
+  icon: React.ReactNode;
+}> = [
+  {
+    key: 'canViewScreen',
+    title: 'View your screen',
+    description: 'Lets the helper securely see your shared display.',
+    icon: <Eye size={16} />,
+  },
+  {
+    key: 'canControl',
+    title: 'Control mouse and keyboard',
+    description: 'Allows remote clicks and typing during the session.',
+    icon: <Pointer size={16} />,
+  },
+  {
+    key: 'canAutomate',
+    title: 'Allow AI automation',
+    description: 'Enables future AI-assisted actions after connection is established.',
+    icon: <Sparkles size={16} />,
+  },
+  {
+    key: 'requirePerActionConsent',
+    title: 'Require per-action approval',
+    description: 'Keeps sensitive actions gated behind additional consent.',
+    icon: <ShieldCheck size={16} />,
+  },
+];
+
+const ConsentScreen: React.FC<ConsentScreenProps> = ({
+  session,
+  onApprove,
+  onDeny,
+  isConnecting,
+}) => {
+  const [selectedPermissions, setSelectedPermissions] = useState<SessionPermissions>(
+    session.requestedPermissions,
+  );
 
   const getRiskColor = (score: number) => {
     if (score < 30) return 'text-green-400';
@@ -28,10 +79,7 @@ const ConsentScreen: React.FC<ConsentScreenProps> = ({ session, onApprove, onDen
   };
 
   const handleApprove = async () => {
-    setIsConnecting(true);
-    await onApprove();
-    // isConnecting stays true — the parent will unmount this component
-    // when the session goes ACTIVE, so no need to reset
+    await onApprove(selectedPermissions);
   };
 
   return (
@@ -48,24 +96,29 @@ const ConsentScreen: React.FC<ConsentScreenProps> = ({ session, onApprove, onDen
           </div>
           <div>
             <h2 className="text-2xl font-bold">Secure Access Request</h2>
-            <p className="text-white/50">A helper wants to assist you with a task.</p>
+            <p className="text-white/50">Review the requested connection permissions before sharing.</p>
           </div>
         </div>
 
         <div className="space-y-6">
-          {/* Task description */}
+          {/* Session context */}
           <div className="bg-white/5 rounded-xl p-4 border border-white/5">
             <label className="text-xs uppercase tracking-widest text-white/30 mb-2 block">
-              Requested Task
+              Session Context
             </label>
-            <p className="text-lg font-medium">"{session.taskPrompt}"</p>
+            <p className="text-lg font-medium">
+              {session.taskPrompt ? `"${session.taskPrompt}"` : 'Remote support session'}
+            </p>
+            <p className="text-xs text-white/40 mt-2">
+              You can allow view-only access, full remote control, or keep future AI actions disabled.
+            </p>
           </div>
 
-          {/* Action plan */}
+          {/* Permission request */}
           <div>
             <div className="flex items-center justify-between mb-4">
               <label className="text-xs uppercase tracking-widest text-white/30">
-                AI Proposed Action Plan
+                Requested Permissions
               </label>
               <div className={`flex items-center gap-2 text-sm font-bold ${getRiskColor(session.riskScore)}`}>
                 <AlertTriangle size={14} />
@@ -90,39 +143,57 @@ const ConsentScreen: React.FC<ConsentScreenProps> = ({ session, onApprove, onDen
             </div>
 
             <div className="space-y-3">
-              {session.actionPlan.map((step, index) => (
+              {permissionMeta.map((permission) => {
+                const isRequested = session.requestedPermissions[permission.key];
+                const enabled = selectedPermissions[permission.key];
+                return (
                 <motion.div
-                  key={index}
+                  key={permission.key}
                   initial={{ opacity: 0, x: -10 }}
                   animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: index * 0.07 }}
-                  className="flex gap-4 p-3 rounded-lg bg-white/5 border border-white/5 hover:border-white/10 transition-colors"
+                  transition={{ delay: 0.05 }}
+                  className={`flex items-center gap-4 p-3 rounded-lg border transition-colors ${
+                    isRequested ? 'bg-white/5 border-white/10' : 'bg-white/3 border-white/5 opacity-60'
+                  }`}
                 >
-                  <div className="text-white/20 font-mono text-sm pt-0.5 shrink-0">{index + 1}</div>
+                  <div className="text-white/30 shrink-0">{permission.icon}</div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <h4 className="font-semibold text-sm">{step.title}</h4>
-                      {step.requires_consent && (
+                      <h4 className="font-semibold text-sm">{permission.title}</h4>
+                      {isRequested ? (
                         <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary border border-primary/20 font-bold uppercase shrink-0">
-                          Approval Required
+                          Requested
+                        </span>
+                      ) : (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/5 text-white/40 border border-white/10 font-bold uppercase shrink-0">
+                          Not Requested
                         </span>
                       )}
-                      <span
-                        className={`text-[10px] px-1.5 py-0.5 rounded font-bold uppercase shrink-0 ${
-                          step.risk_level === 'LOW'
-                            ? 'bg-green-400/10 text-green-400 border border-green-400/20'
-                            : step.risk_level === 'MEDIUM'
-                            ? 'bg-yellow-400/10 text-yellow-400 border border-yellow-400/20'
-                            : 'bg-red-400/10 text-red-400 border border-red-400/20'
-                        }`}
-                      >
-                        {step.risk_level}
-                      </span>
                     </div>
-                    <p className="text-xs text-white/40 mt-1">{step.description}</p>
+                    <p className="text-xs text-white/40 mt-1">{permission.description}</p>
                   </div>
+                  <button
+                    type="button"
+                    disabled={!isRequested || isConnecting}
+                    onClick={() =>
+                      setSelectedPermissions((current) => ({
+                        ...current,
+                        [permission.key]: !current[permission.key],
+                      }))
+                    }
+                    className={`w-12 h-6 rounded-full p-1 transition-colors ${
+                      enabled ? 'bg-primary/30' : 'bg-white/10'
+                    } ${!isRequested ? 'cursor-not-allowed' : 'cursor-pointer'}`}
+                  >
+                    <div
+                      className={`w-4 h-4 rounded-full transition-transform ${
+                        enabled ? 'bg-primary translate-x-6' : 'bg-white/60 translate-x-0'
+                      }`}
+                    />
+                  </button>
                 </motion.div>
-              ))}
+                );
+              })}
             </div>
           </div>
 
@@ -130,8 +201,8 @@ const ConsentScreen: React.FC<ConsentScreenProps> = ({ session, onApprove, onDen
           <div className="p-4 rounded-xl bg-accent/5 border border-accent/10 flex gap-4">
             <AlertTriangle className="text-accent shrink-0 mt-0.5" size={18} />
             <p className="text-xs text-accent/80">
-              By clicking "Approve", you grant the helper temporary permission to view your screen and simulate
-              mouse/keyboard inputs. You can terminate the session at any time.
+              After approval, Windows will ask which screen or window to share. You can stop sharing
+              or end the session at any time.
             </p>
           </div>
 

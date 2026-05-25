@@ -7,23 +7,171 @@ interface RemoteViewProps {
   stream: MediaStream | null;
   onClose: () => void;
   onControlEvent: (type: string, payload: any) => void;
+  canControl: boolean;
 }
 
-const RemoteView: React.FC<RemoteViewProps> = ({ stream, onClose, onControlEvent }) => {
+const RemoteView: React.FC<RemoteViewProps> = ({
+  stream,
+  onClose,
+  onControlEvent,
+  canControl,
+}) => {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const lastAttachedStreamIdRef = useRef<string | null>(null);
+  const playPromiseRef = useRef<Promise<void> | null>(null);
   const [paused, setPaused] = useState(false);
   const [cursorPos, setCursorPos] = useState({ x: 0, y: 0 });
   const [connectionQuality, setConnectionQuality] = useState<'good' | 'poor' | 'unknown'>('unknown');
   const [activeStepIndex, setActiveStepIndex] = useState(0);
+  const [videoMetrics, setVideoMetrics] = useState({
+    readyState: 0,
+    videoWidth: 0,
+    videoHeight: 0,
+    currentTime: 0,
+    paused: true,
+  });
+  const [frameCount, setFrameCount] = useState(0);
   const qualityIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const metricsIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const { actionPlan, taskPrompt } = useSessionStore();
 
   // Attach stream to video element
   useEffect(() => {
-    if (videoRef.current && stream) {
-      videoRef.current.srcObject = stream;
+    const video = videoRef.current;
+    if (!video) return;
+    if (!stream) {
+      lastAttachedStreamIdRef.current = null;
+      playPromiseRef.current = null;
+      video.pause();
+      video.srcObject = null;
+      return;
     }
+
+    let keepAliveInterval: NodeJS.Timeout | null = null;
+
+    if (lastAttachedStreamIdRef.current !== stream.id) {
+      lastAttachedStreamIdRef.current = stream.id;
+      console.log('[DEBUG] RemoteView: attaching stream to video element');
+      console.log('[DEBUG] RemoteView: stream id =', stream.id);
+      console.log('[DEBUG] RemoteView: video tracks count =', stream.getVideoTracks().length);
+      video.srcObject = stream;
+      
+      if (!video.paused) {
+        console.log('[DEBUG] RemoteView: video already playing');
+      } else {
+        console.log('[DEBUG] RemoteView: calling video.play()');
+        playPromiseRef.current = video.play().catch((err) => {
+          if (err.name === 'AbortError') {
+            console.log('[DEBUG] RemoteView: play() aborted (expected if React re-rendered quickly), retrying in 100ms');
+            setTimeout(() => {
+              const v = videoRef.current;
+              if (v && v.srcObject && v.paused) {
+                v.play().catch((e) => console.warn('[DEBUG] RemoteView: retry play() failed', e));
+              }
+            }, 100);
+          } else {
+            console.warn('[DEBUG] RemoteView: video.play() failed', err);
+          }
+        });
+      }
+
+      keepAliveInterval = setInterval(() => {
+        const v = videoRef.current;
+        if (v && v.srcObject && v.paused) {
+          console.log('[DEBUG] RemoteView: keep-alive checking: video paused, calling play()');
+          v.play().catch((e) => {
+            if (e.name !== 'AbortError') {
+              console.warn('[DEBUG] RemoteView: keep-alive play failed', e);
+            }
+          });
+        }
+      }, 500);
+    }
+
+    return () => {
+      if (keepAliveInterval) clearInterval(keepAliveInterval);
+    };
+  }, [stream]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    if (!stream) {
+      setFrameCount(0);
+      setVideoMetrics({
+        readyState: 0,
+        videoWidth: 0,
+        videoHeight: 0,
+        currentTime: 0,
+        paused: true,
+      });
+      return;
+    }
+
+    const updateMetrics = () => {
+      setVideoMetrics({
+        readyState: video.readyState,
+        videoWidth: video.videoWidth,
+        videoHeight: video.videoHeight,
+        currentTime: video.currentTime,
+        paused: video.paused,
+      });
+    };
+
+    updateMetrics();
+    metricsIntervalRef.current = setInterval(updateMetrics, 500);
+
+    let stopped = false;
+    const hasRVFC = typeof (video as any).requestVideoFrameCallback === 'function';
+    const tick = () => {
+      if (stopped) return;
+      setFrameCount((c) => c + 1);
+      if (hasRVFC) {
+        (video as any).requestVideoFrameCallback(tick);
+      } else {
+        setTimeout(tick, 1000);
+      }
+    };
+    tick();
+
+    const onWaiting = () => {
+      console.log('[DEBUG] RemoteView: video waiting — trying to restart playback');
+      if (video.srcObject && video.paused) {
+        video.play().catch((e) => console.warn('[DEBUG] RemoteView: onWaiting retry play failed', e));
+      }
+    };
+    const onStalled = () => {
+      console.log('[DEBUG] RemoteView: video stalled — trying to restart playback');
+      if (video.srcObject && video.paused) {
+        video.play().catch((e) => console.warn('[DEBUG] RemoteView: onStalled retry play failed', e));
+      }
+    };
+    const onPlaying = () => console.log('[DEBUG] RemoteView: video playing ✅');
+    const onLoadedMeta = () => {
+      console.log('[DEBUG] RemoteView: loadedmetadata', video.videoWidth, video.videoHeight);
+      if (video.paused) {
+        console.log('[DEBUG] RemoteView: loadedmetadata but paused — calling play()');
+        video.play().catch((e) => console.warn('[DEBUG] RemoteView: loadedmetadata play failed', e));
+      }
+    };
+    const onError = () => console.warn('[DEBUG] RemoteView: video error', video.error);
+
+    video.addEventListener('waiting', onWaiting);
+    video.addEventListener('stalled', onStalled);
+    video.addEventListener('playing', onPlaying);
+    video.addEventListener('loadedmetadata', onLoadedMeta);
+    video.addEventListener('error', onError);
+
+    return () => {
+      stopped = true;
+      if (metricsIntervalRef.current) clearInterval(metricsIntervalRef.current);
+      video.removeEventListener('waiting', onWaiting);
+      video.removeEventListener('stalled', onStalled);
+      video.removeEventListener('playing', onPlaying);
+      video.removeEventListener('loadedmetadata', onLoadedMeta);
+      video.removeEventListener('error', onError);
+    };
   }, [stream]);
 
   // Poll WebRTC stats for connection quality
@@ -55,6 +203,7 @@ const RemoteView: React.FC<RemoteViewProps> = ({ stream, onClose, onControlEvent
   }, [stream]);
 
   const handleMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (!canControl) return;
     const rect = videoRef.current?.getBoundingClientRect();
     if (!rect) return;
 
@@ -67,13 +216,14 @@ const RemoteView: React.FC<RemoteViewProps> = ({ stream, onClose, onControlEvent
     const x = Math.round((relX / rect.width) * 1920);
     const y = Math.round((relY / rect.height) * 1080);
     onControlEvent('MOUSE_MOVE', { x, y });
-  }, [onControlEvent]);
+  }, [canControl, onControlEvent]);
 
   const handleMouseClick = useCallback((e: React.MouseEvent) => {
+    if (!canControl) return;
     e.preventDefault();
     const button = e.button === 2 ? 'right' : 'left';
     onControlEvent('MOUSE_CLICK', { button });
-  }, [onControlEvent]);
+  }, [canControl, onControlEvent]);
 
   const togglePause = () => {
     if (!videoRef.current) return;
@@ -94,6 +244,9 @@ const RemoteView: React.FC<RemoteViewProps> = ({ stream, onClose, onControlEvent
 
   const qualityLabel =
     connectionQuality === 'good' ? 'Good' : connectionQuality === 'poor' ? 'Poor' : '…';
+
+  const hasFrames = frameCount > 3 && videoMetrics.currentTime > 0;
+  const needsPlayHelp = Boolean(stream) && !hasFrames && videoMetrics.readyState < 3;
 
   return (
     <div className="flex h-full gap-4">
@@ -116,6 +269,17 @@ const RemoteView: React.FC<RemoteViewProps> = ({ stream, onClose, onControlEvent
                 <div className="w-2 h-2 rounded-full bg-current animate-pulse" />
               )}
               {connectionQuality === 'good' ? 'SECURE P2P' : `QUALITY: ${qualityLabel}`}
+            </div>
+            <div className="h-4 w-[1px] bg-white/10" />
+            <div className="text-[10px] font-bold text-white/40">
+              {stream ? `${videoMetrics.videoWidth || 0}×${videoMetrics.videoHeight || 0}` : '0×0'} ·
+              {` RS:${videoMetrics.readyState}`} ·
+              {` t:${videoMetrics.currentTime.toFixed(1)}`} ·
+              {` f:${frameCount}`}
+            </div>
+            <div className="h-4 w-[1px] bg-white/10" />
+            <div className={`text-[10px] font-bold uppercase tracking-widest ${canControl ? 'text-primary' : 'text-white/40'}`}>
+              {canControl ? 'Remote Control Enabled' : 'View Only'}
             </div>
           </div>
 
@@ -152,6 +316,18 @@ const RemoteView: React.FC<RemoteViewProps> = ({ stream, onClose, onControlEvent
             className="w-full h-full object-contain"
           />
 
+          {needsPlayHelp && (
+            <div className="absolute inset-0 flex items-center justify-center bg-black/40">
+              <button
+                type="button"
+                onClick={() => videoRef.current?.play()}
+                className="btn-secondary text-xs"
+              >
+                Start Video
+              </button>
+            </div>
+          )}
+
           {/* Paused overlay */}
           <AnimatePresence>
             {paused && (
@@ -168,11 +344,27 @@ const RemoteView: React.FC<RemoteViewProps> = ({ stream, onClose, onControlEvent
             )}
           </AnimatePresence>
 
+          {!stream && (
+            <div className="absolute inset-0 flex items-center justify-center bg-black/80">
+              <div className="text-center max-w-md px-6">
+                <div className="text-primary text-sm font-bold uppercase tracking-widest mb-3">
+                  Waiting For Remote Stream
+                </div>
+                <p className="text-white/40 text-sm leading-relaxed">
+                  The peer connection is established, but no video frames have arrived yet. Make
+                  sure the client selected an actual screen or desktop window to share.
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Virtual cursor dot */}
-          <div
-            className="absolute pointer-events-none w-4 h-4 border-2 border-primary rounded-full shadow-neon -translate-x-1/2 -translate-y-1/2 transition-none"
-            style={{ left: cursorPos.x, top: cursorPos.y }}
-          />
+          {canControl && (
+            <div
+              className="absolute pointer-events-none w-4 h-4 border-2 border-primary rounded-full shadow-neon -translate-x-1/2 -translate-y-1/2 transition-none"
+              style={{ left: cursorPos.x, top: cursorPos.y }}
+            />
+          )}
         </div>
       </div>
 
@@ -187,6 +379,15 @@ const RemoteView: React.FC<RemoteViewProps> = ({ stream, onClose, onControlEvent
               {taskPrompt}
             </p>
           )}
+
+          <div className="mb-4 rounded-lg border border-white/5 bg-white/5 p-3">
+            <div className="text-[10px] uppercase tracking-widest text-white/30 mb-2">Connection Scope</div>
+            <p className="text-xs text-white/60 leading-relaxed">
+              {canControl
+                ? 'This session currently allows live viewing and remote mouse/keyboard control.'
+                : 'This session is running in view-only mode. Remote control is disabled by the recipient.'}
+            </p>
+          </div>
 
           {actionPlan && actionPlan.length > 0 ? (
             <div className="space-y-2">
@@ -242,7 +443,9 @@ const RemoteView: React.FC<RemoteViewProps> = ({ stream, onClose, onControlEvent
               })}
             </div>
           ) : (
-            <p className="text-[11px] text-white/20 text-center mt-8">No action plan loaded.</p>
+            <p className="text-[11px] text-white/20 text-center mt-8">
+              Remote session is active. AI task execution has not been started yet.
+            </p>
           )}
         </div>
 

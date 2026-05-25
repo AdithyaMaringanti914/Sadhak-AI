@@ -24,12 +24,18 @@ model Session {
   code          String    @unique
   helperId      String
   helper        User      @relation("HelperSessions", fields: [helperId], references: [id])
-  status        String    @default("PENDING") // PENDING, ACTIVE, COMPLETED, CANCELLED
-  taskPrompt    String
+  status        String    @default("CREATED")
+  taskPrompt    String?
   actionPlan    String?   // JSON string of WorkflowSteps
   riskScore     Int       @default(0)
+  requestedPermissions String?
+  grantedPermissions   String?
   createdAt     DateTime  @default(now())
+  approvedAt    DateTime?
+  connectedAt   DateTime?
   expiresAt     DateTime
+  endedAt       DateTime?
+  updatedAt     DateTime  @default(now()) @updatedAt
   auditLogs     AuditLog[]
 }
 

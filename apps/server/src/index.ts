@@ -7,8 +7,6 @@ import dotenv from 'dotenv';
 import sessionRoutes from './routes/sessionRoutes';
 import chatRoutes from './routes/chatRoutes';
 
-import { rateLimit } from 'express-rate-limit';
-
 dotenv.config();
 
 const app = express();
@@ -17,15 +15,15 @@ const server = http.createServer(app);
 // Fix 6: CORS Lockdown
 const allowedOrigins = [
   "vscode-webview://",
-  "http://localhost:5173", // For development
-  "http://localhost:5174",
   "app://.",              // Electron production
-  "https://sadhak.ai"    // Production domain
+  "https://sadhak.ai"     // Production domain
 ];
 
-// Electron sends null origin for file:// protocol, we must allow it
+// Electron sends null origin for file:// protocol, we must allow it.
+// For local development, accept any localhost port so Vite can auto-bump ports.
 const isAllowedOrigin = (origin: string | undefined) => {
   if (!origin) return true; // null origin = Electron or curl
+  if (/^https?:\/\/(localhost|127\.0\.0\.1):\d+$/i.test(origin)) return true;
   return allowedOrigins.some(o => origin.startsWith(o));
 };
 
@@ -42,14 +40,6 @@ const io = new Server(server, {
   }
 });
 
-// Fix 8: Rate Limiting
-const signalingLimiter = rateLimit({
-  windowMs: 1 * 60 * 1000, // 1 minute
-  max: 5, // Limit each IP to 5 requests per windowMs
-  message: { success: false, error: 'Too many attempts, please try again later.' },
-  standardHeaders: true,
-  legacyHeaders: false,
-});
 
 app.use(cors({
   origin: (origin, callback) => {
@@ -63,8 +53,6 @@ app.use(cors({
 
 app.use(express.json());
 
-// Apply rate limiter to joining sessions
-app.use('/api/sessions/:code', signalingLimiter);
 app.use('/api/sessions', sessionRoutes);
 app.use('/api/chat', chatRoutes);
 
@@ -99,6 +87,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('signal', ({ sessionId, data }: { sessionId: string; data: any }) => {
+    console.log(`[SIGNAL RELAY] Session ${sessionId} relaying signal: ${Object.keys(data).join(', ')}`);
     // Forward WebRTC signaling data to all other peers in the session
     socket.to(sessionId).emit('signal', data);
   });
@@ -109,6 +98,7 @@ io.on('connection', (socket) => {
       const room = sessionRooms.get(sessionId);
       if (room) {
         room.delete(socket.id);
+        socket.to(sessionId).emit('peer-disconnected', { sessionId });
         if (room.size === 0) sessionRooms.delete(sessionId);
       }
     }

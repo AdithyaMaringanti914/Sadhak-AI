@@ -19,10 +19,6 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onSessionCreate, onSessio
   const { sessionCode, role, status } = useSessionStore();
 
   const handleCreate = async () => {
-    if (!prompt.trim()) {
-      toast.error('Please describe the task first.');
-      return;
-    }
     setIsCreating(true);
     try {
       await onSessionCreate(prompt);
@@ -32,8 +28,8 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onSessionCreate, onSessio
   };
 
   const handleJoin = async () => {
-    if (sessionCodeInput.length < 6) {
-      toast.error('Enter the full 6-character code.');
+    if (sessionCodeInput.length < 10) {
+      toast.error('Enter the full 10-character code.');
       return;
     }
     setIsJoining(true);
@@ -54,7 +50,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onSessionCreate, onSessio
   };
 
   // Helper waiting for client after session created
-  if (status === 'CONNECTING' && role === 'HELPER') {
+  if ((status === 'WAITING_FOR_PEER' || status === 'CONNECTING') && role === 'HELPER') {
     return (
       <div className="max-w-md mx-auto mt-20 text-center">
         <motion.div
@@ -87,13 +83,16 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onSessionCreate, onSessio
           </button>
 
           <p className="text-white/40 text-sm mb-8">
-            Share this code with the person you want to help. They enter it in the app to connect.
+            Share this code with the person or device you want to connect to. They will review the
+            requested permissions before the session starts.
           </p>
 
           <div className="flex items-center justify-center gap-3 text-white/60 animate-pulse bg-primary/5 py-3 rounded-full">
             <div className="w-2 h-2 rounded-full bg-primary" />
             <span className="text-xs font-bold uppercase tracking-widest">
-              Waiting for client to join…
+              {status === 'CONNECTING'
+                ? 'Peer approved. Establishing secure link…'
+                : 'Waiting for peer to join…'}
             </span>
           </div>
         </motion.div>
@@ -112,7 +111,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onSessionCreate, onSessio
           Secure. Intelligent. <span className="text-neon">Sadhak AI.</span>
         </h2>
         <p className="text-white/40 text-xl max-w-2xl">
-          The ultimate bridge for high-end remote technical assistance.
+          Start a secure remote session first, then layer AI-assisted task execution on top.
         </p>
       </header>
 
@@ -121,8 +120,8 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onSessionCreate, onSessio
         <div className="glass-card flex flex-col group hover:border-primary/30 transition-all duration-500">
           <div className="mb-6 flex items-center justify-between">
             <div>
-              <h3 className="text-xl font-bold mb-1">Technical Operator</h3>
-              <p className="text-white/30 text-xs uppercase tracking-widest">Initialize Task Decomp</p>
+              <h3 className="text-xl font-bold mb-1">Remote Operator</h3>
+              <p className="text-white/30 text-xs uppercase tracking-widest">Start Secure Session</p>
             </div>
             <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center text-primary group-hover:shadow-neon transition-all">
               <AnimatePresence mode="wait">
@@ -145,26 +144,26 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onSessionCreate, onSessio
             onKeyDown={(e) => {
               if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) handleCreate();
             }}
-            placeholder="Describe the task for AI analysis… (Ctrl+Enter to submit)"
+            placeholder="Optional: describe the task or context for the remote session. (Ctrl+Enter to start)"
             className="input-field flex-1 min-h-[160px] mb-6 resize-none text-sm leading-relaxed"
             disabled={isCreating}
           />
 
           <button
             onClick={handleCreate}
-            disabled={isCreating || !prompt.trim()}
+            disabled={isCreating}
             className="btn-primary w-full py-4 text-sm font-bold uppercase tracking-widest flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <AnimatePresence mode="wait">
               {isCreating ? (
                 <motion.span key="loading" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex items-center gap-2">
                   <Loader2 size={16} className="animate-spin" />
-                  AI Decomposing Task…
+                  Creating Session…
                 </motion.span>
               ) : (
                 <motion.span key="idle" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex items-center gap-2">
                   <Sparkles size={16} />
-                  Decompose &amp; Generate Code
+                  Start Remote Session
                 </motion.span>
               )}
             </AnimatePresence>
@@ -195,14 +194,16 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onSessionCreate, onSessio
 
           <div className="flex-1 flex flex-col justify-center">
             <label className="text-[10px] uppercase tracking-[0.2em] text-white/30 text-center mb-4">
-              Enter 6-Character Hex Token
+              Enter 10-Character Session Code
             </label>
             <input
               value={sessionCodeInput}
-              onChange={(e) => setSessionCodeInput(e.target.value.toUpperCase())}
+              onChange={(e) =>
+                setSessionCodeInput(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))
+              }
               onKeyDown={(e) => { if (e.key === 'Enter') handleJoin(); }}
               placeholder="A1B2C3"
-              className="input-field text-center text-4xl tracking-[0.4em] font-black mb-6 bg-white/5 border-none focus:ring-0 placeholder:text-white/5"
+              className="input-field text-center text-4xl tracking-[0.3em] font-black mb-6 bg-white/5 border-none focus:ring-0 placeholder:text-white/5"
               maxLength={10}
               disabled={isJoining}
             />
