@@ -1,11 +1,5 @@
 import { create } from 'zustand';
-
-export interface SessionPermissions {
-  canViewScreen: boolean;
-  canControl: boolean;
-  canAutomate: boolean;
-  requirePerActionConsent: boolean;
-}
+import type { SessionPermissions } from '@shared/types';
 
 export const DEFAULT_REQUESTED_PERMISSIONS: SessionPermissions = {
   canViewScreen: true,
@@ -34,9 +28,11 @@ interface SessionState {
   riskScore: number;
   requestedPermissions: SessionPermissions;
   grantedPermissions: SessionPermissions | null;
+  activeStepIndex: number;
 
   setSession: (data: Partial<SessionState>) => void;
   resetSession: () => void;
+  setActiveStepIndex: (index: number) => void;
 }
 
 export const useSessionStore = create<SessionState>((set) => ({
@@ -50,6 +46,7 @@ export const useSessionStore = create<SessionState>((set) => ({
   riskScore: 0,
   requestedPermissions: DEFAULT_REQUESTED_PERMISSIONS,
   grantedPermissions: null,
+  activeStepIndex: 0,
 
   setSession: (data) => set((state) => ({ ...state, ...data })),
   resetSession: () =>
@@ -64,5 +61,7 @@ export const useSessionStore = create<SessionState>((set) => ({
       riskScore: 0,
       requestedPermissions: DEFAULT_REQUESTED_PERMISSIONS,
       grantedPermissions: null,
+      activeStepIndex: 0,
     }),
+  setActiveStepIndex: (index) => set({ activeStepIndex: index }),
 }));

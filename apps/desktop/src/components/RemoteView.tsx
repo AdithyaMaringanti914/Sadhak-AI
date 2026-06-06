@@ -1,7 +1,24 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
-import { Pause, Play, XCircle, Monitor, Wifi, WifiOff, CheckCircle2, Clock } from 'lucide-react';
+import {
+  Pause,
+  Play,
+  XCircle,
+  Monitor,
+  Wifi,
+  WifiOff,
+  CheckCircle2,
+  Clock,
+  MousePointer2,
+  Cpu,
+  Type,
+  Eye,
+  Wand2,
+  PlayCircle,
+} from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useSessionStore } from '../store/sessionStore';
+import { toast } from 'sonner';
+import type { AgentAction } from '@shared/types';
 
 interface RemoteViewProps {
   stream: MediaStream | null;
@@ -17,12 +34,11 @@ const RemoteView: React.FC<RemoteViewProps> = ({
   canControl,
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
   const lastAttachedStreamIdRef = useRef<string | null>(null);
-  const playPromiseRef = useRef<Promise<void> | null>(null);
   const [paused, setPaused] = useState(false);
   const [cursorPos, setCursorPos] = useState({ x: 0, y: 0 });
   const [connectionQuality, setConnectionQuality] = useState<'good' | 'poor' | 'unknown'>('unknown');
-  const [activeStepIndex, setActiveStepIndex] = useState(0);
   const [videoMetrics, setVideoMetrics] = useState({
     readyState: 0,
     videoWidth: 0,
@@ -34,63 +50,107 @@ const RemoteView: React.FC<RemoteViewProps> = ({
   const qualityIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const metricsIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const { actionPlan, taskPrompt } = useSessionStore();
+  // Execution-specific state
+  const [executionMode, setExecutionMode] = useState<'manual' | 'select' | 'automate'>('manual');
+  const [pendingTypeText, setPendingTypeText] = useState('');
+  const [isExecuting, setIsExecuting] = useState(false);
+  const [capturedImage, setCapturedImage] = useState<string | null>(null);
 
-  // Attach stream to video element
+  const { actionPlan, taskPrompt, activeStepIndex, setActiveStepIndex } = useSessionStore();
+
+  // Attach stream to video element and keep it playing
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
+
     if (!stream) {
       lastAttachedStreamIdRef.current = null;
-      playPromiseRef.current = null;
       video.pause();
       video.srcObject = null;
       return;
     }
 
-    let keepAliveInterval: NodeJS.Timeout | null = null;
-
+    // If we get a new stream, reset everything
     if (lastAttachedStreamIdRef.current !== stream.id) {
       lastAttachedStreamIdRef.current = stream.id;
       console.log('[DEBUG] RemoteView: attaching stream to video element');
       console.log('[DEBUG] RemoteView: stream id =', stream.id);
       console.log('[DEBUG] RemoteView: video tracks count =', stream.getVideoTracks().length);
-      video.srcObject = stream;
       
-      if (!video.paused) {
-        console.log('[DEBUG] RemoteView: video already playing');
-      } else {
-        console.log('[DEBUG] RemoteView: calling video.play()');
-        playPromiseRef.current = video.play().catch((err) => {
-          if (err.name === 'AbortError') {
-            console.log('[DEBUG] RemoteView: play() aborted (expected if React re-rendered quickly), retrying in 100ms');
-            setTimeout(() => {
-              const v = videoRef.current;
-              if (v && v.srcObject && v.paused) {
-                v.play().catch((e) => console.warn('[DEBUG] RemoteView: retry play() failed', e));
-              }
-            }, 100);
-          } else {
-            console.warn('[DEBUG] RemoteView: video.play() failed', err);
+      video.srcObject = stream;
+      video.autoplay = true;
+      video.playsInline = true;
+      video.muted = true;
+      
+      const playVideo = async () => {
+        try {
+          console.log('[DEBUG] RemoteView: calling video.play()');
+          await video.play();
+          console.log('[DEBUG] RemoteView: video.play() succeeded');
+        } catch (err: any) {
+          console.warn('[DEBUG] RemoteView: video.play() failed', err);
+          // Retry once quickly
+          setTimeout(() => {
+            const v = videoRef.current;
+            if (v && v.srcObject) {
+              v.play().catch(e => console.warn('[DEBUG] RemoteView: retry play failed', e));
+            }
+          }, 200);
+        }
+      };
+
+      playVideo();
+    }
+  }, [stream]);
+
+  // Monitor and maintain playback state
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    const ensurePlaying = () => {
+      if (video.srcObject && video.paused) {
+        console.log('[DEBUG] RemoteView: video paused, attempting to play');
+        video.play().catch(e => {
+          if (e.name !== 'AbortError') {
+            console.warn('[DEBUG] RemoteView: ensurePlaying failed', e);
           }
         });
       }
+    };
 
-      keepAliveInterval = setInterval(() => {
-        const v = videoRef.current;
-        if (v && v.srcObject && v.paused) {
-          console.log('[DEBUG] RemoteView: keep-alive checking: video paused, calling play()');
-          v.play().catch((e) => {
-            if (e.name !== 'AbortError') {
-              console.warn('[DEBUG] RemoteView: keep-alive play failed', e);
-            }
-          });
-        }
-      }, 500);
-    }
+    const onWaiting = () => {
+      console.log('[DEBUG] RemoteView: video waiting — trying to restart playback');
+      ensurePlaying();
+    };
+
+    const onPlaying = () => console.log('[DEBUG] RemoteView: video playing ✅');
+    const onLoadedMetadata = () => {
+      console.log('[DEBUG] RemoteView: loaded metadata', video.videoWidth, video.videoHeight);
+      ensurePlaying();
+    };
+    const onPause = () => {
+      console.log('[DEBUG] RemoteView: video paused — will try to resume');
+      setTimeout(ensurePlaying, 100);
+    };
+    const onError = () => console.warn('[DEBUG] RemoteView: video error', video.error);
+
+    video.addEventListener('waiting', onWaiting);
+    video.addEventListener('playing', onPlaying);
+    video.addEventListener('loadedmetadata', onLoadedMetadata);
+    video.addEventListener('pause', onPause);
+    video.addEventListener('error', onError);
+
+    // Keep the video playing
+    const keepAliveInterval = setInterval(ensurePlaying, 500);
 
     return () => {
-      if (keepAliveInterval) clearInterval(keepAliveInterval);
+      video.removeEventListener('waiting', onWaiting);
+      video.removeEventListener('playing', onPlaying);
+      video.removeEventListener('loadedmetadata', onLoadedMetadata);
+      video.removeEventListener('pause', onPause);
+      video.removeEventListener('error', onError);
+      clearInterval(keepAliveInterval);
     };
   }, [stream]);
 
@@ -135,42 +195,19 @@ const RemoteView: React.FC<RemoteViewProps> = ({
     };
     tick();
 
-    const onWaiting = () => {
-      console.log('[DEBUG] RemoteView: video waiting — trying to restart playback');
-      if (video.srcObject && video.paused) {
-        video.play().catch((e) => console.warn('[DEBUG] RemoteView: onWaiting retry play failed', e));
-      }
-    };
     const onStalled = () => {
       console.log('[DEBUG] RemoteView: video stalled — trying to restart playback');
       if (video.srcObject && video.paused) {
         video.play().catch((e) => console.warn('[DEBUG] RemoteView: onStalled retry play failed', e));
       }
     };
-    const onPlaying = () => console.log('[DEBUG] RemoteView: video playing ✅');
-    const onLoadedMeta = () => {
-      console.log('[DEBUG] RemoteView: loadedmetadata', video.videoWidth, video.videoHeight);
-      if (video.paused) {
-        console.log('[DEBUG] RemoteView: loadedmetadata but paused — calling play()');
-        video.play().catch((e) => console.warn('[DEBUG] RemoteView: loadedmetadata play failed', e));
-      }
-    };
-    const onError = () => console.warn('[DEBUG] RemoteView: video error', video.error);
 
-    video.addEventListener('waiting', onWaiting);
     video.addEventListener('stalled', onStalled);
-    video.addEventListener('playing', onPlaying);
-    video.addEventListener('loadedmetadata', onLoadedMeta);
-    video.addEventListener('error', onError);
 
     return () => {
       stopped = true;
       if (metricsIntervalRef.current) clearInterval(metricsIntervalRef.current);
-      video.removeEventListener('waiting', onWaiting);
       video.removeEventListener('stalled', onStalled);
-      video.removeEventListener('playing', onPlaying);
-      video.removeEventListener('loadedmetadata', onLoadedMeta);
-      video.removeEventListener('error', onError);
     };
   }, [stream]);
 
@@ -183,7 +220,6 @@ const RemoteView: React.FC<RemoteViewProps> = ({
         const [track] = stream.getVideoTracks();
         if (!track) return;
 
-        // Use track settings as a proxy for quality
         const settings = track.getSettings();
         if (settings.frameRate && settings.frameRate >= 15) {
           setConnectionQuality('good');
@@ -202,8 +238,19 @@ const RemoteView: React.FC<RemoteViewProps> = ({
     };
   }, [stream]);
 
+  const captureFrame = useCallback(() => {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || !canvas) return null;
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    return canvas.toDataURL('image/png');
+  }, []);
+
   const handleMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    if (!canControl) return;
     const rect = videoRef.current?.getBoundingClientRect();
     if (!rect) return;
 
@@ -215,15 +262,82 @@ const RemoteView: React.FC<RemoteViewProps> = ({
     // Map to remote screen coordinates (assume 1920×1080 target)
     const x = Math.round((relX / rect.width) * 1920);
     const y = Math.round((relY / rect.height) * 1080);
-    onControlEvent('MOUSE_MOVE', { x, y });
-  }, [canControl, onControlEvent]);
+
+    if (executionMode === 'manual' && canControl) {
+      onControlEvent('MOUSE_MOVE', { x, y });
+    }
+  }, [canControl, onControlEvent, executionMode]);
 
   const handleMouseClick = useCallback((e: React.MouseEvent) => {
-    if (!canControl) return;
     e.preventDefault();
-    const button = e.button === 2 ? 'right' : 'left';
-    onControlEvent('MOUSE_CLICK', { button });
-  }, [canControl, onControlEvent]);
+    if (!canControl) return;
+
+    if (executionMode === 'manual') {
+      const button = e.button === 2 ? 'right' : 'left';
+      onControlEvent('MOUSE_CLICK', { button });
+    } else if (executionMode === 'select') {
+      const rect = videoRef.current?.getBoundingClientRect();
+      if (!rect) return;
+
+      const relX = e.clientX - rect.left;
+      const relY = e.clientY - rect.top;
+      const x = Math.round((relX / rect.width) * 1920);
+      const y = Math.round((relY / rect.height) * 1080);
+
+      executeAction({
+        actionId: `click-${Date.now()}`,
+        stepId: actionPlan?.[activeStepIndex]?.id ?? 'unknown-step',
+        type: 'CLICK',
+        x,
+        y,
+        riskLevel: 'LOW',
+        timestamp: Date.now(),
+      });
+    }
+  }, [canControl, executionMode, activeStepIndex, actionPlan]);
+
+  const executeAction = useCallback(async (action: AgentAction) => {
+    setIsExecuting(true);
+    try {
+      if ((window as any).electronAPI?.executionExecuteAction) {
+        await (window as any).electronAPI.executionExecuteAction(action);
+      }
+      toast.success('Executing action...', { duration: 2000 });
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to execute action');
+    } finally {
+      setIsExecuting(false);
+    }
+  }, []);
+
+  const executeCurrentStep = useCallback(async () => {
+    if (!actionPlan) return;
+    const currentStep = actionPlan[activeStepIndex];
+    if (!currentStep) return;
+
+    setIsExecuting(true);
+    try {
+      // First capture frame for perception layer
+      const img = captureFrame();
+      if (img) setCapturedImage(img);
+
+      // If suggested actions exist, run them
+      if (currentStep.suggestedAgentActions?.length) {
+        for (const action of currentStep.suggestedAgentActions) {
+          await new Promise((resolve) => setTimeout(resolve, 200));
+          await executeAction(action);
+        }
+      } else {
+        toast.info('No suggested actions for this step — use Select mode to choose actions');
+      }
+
+      setActiveStepIndex(Math.min(actionPlan.length - 1, activeStepIndex + 1));
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to execute step');
+    } finally {
+      setIsExecuting(false);
+    }
+  }, [actionPlan, activeStepIndex, setActiveStepIndex, captureFrame, executeAction]);
 
   const togglePause = () => {
     if (!videoRef.current) return;
@@ -250,7 +364,10 @@ const RemoteView: React.FC<RemoteViewProps> = ({
 
   return (
     <div className="flex h-full gap-4">
-      {/* ── Main video panel ─────────────────────────────────────────────── */}
+      {/* Hidden canvas for frame capture */}
+      <canvas ref={canvasRef} className="hidden" />
+
+      {/* Main video panel */}
       <div className="flex-1 flex flex-col bg-black rounded-2xl overflow-hidden border border-white/10 shadow-2xl">
         {/* Toolbar */}
         <div className="h-12 bg-surface flex items-center justify-between px-4 border-b border-white/5 shrink-0">
@@ -303,7 +420,7 @@ const RemoteView: React.FC<RemoteViewProps> = ({
 
         {/* Video */}
         <div
-          className="flex-1 relative cursor-none select-none"
+          className={`flex-1 relative ${executionMode === 'select' ? 'cursor-crosshair' : 'cursor-none'} select-none`}
           onMouseMove={handleMouseMove}
           onClick={handleMouseClick}
           onContextMenu={handleMouseClick}
@@ -359,17 +476,19 @@ const RemoteView: React.FC<RemoteViewProps> = ({
           )}
 
           {/* Virtual cursor dot */}
-          {canControl && (
-            <div
-              className="absolute pointer-events-none w-4 h-4 border-2 border-primary rounded-full shadow-neon -translate-x-1/2 -translate-y-1/2 transition-none"
-              style={{ left: cursorPos.x, top: cursorPos.y }}
-            />
-          )}
+          <div
+            className={`absolute pointer-events-none w-4 h-4 border-2 rounded-full shadow-neon -translate-x-1/2 -translate-y-1/2 transition-none ${
+              executionMode === 'select'
+                ? 'border-yellow-400 bg-yellow-400/20'
+                : 'border-primary'
+            }`}
+            style={{ left: cursorPos.x, top: cursorPos.y }}
+          />
         </div>
       </div>
 
-      {/* ── AI Action Plan sidebar ───────────────────────────────────────── */}
-      <div className="w-64 flex flex-col gap-4 shrink-0">
+      {/* AI Action Plan sidebar */}
+      <div className="w-72 flex flex-col gap-4 shrink-0">
         <div className="glass-card flex-1 p-4 border-white/5 overflow-y-auto">
           <h4 className="text-xs font-bold uppercase tracking-widest text-primary mb-1">
             AI Execution Plan
@@ -380,6 +499,54 @@ const RemoteView: React.FC<RemoteViewProps> = ({
             </p>
           )}
 
+          {/* Execution Mode Tabs */}
+          {canControl && (
+            <div className="mb-4 p-3 rounded-lg border border-white/5 bg-white/5">
+              <div className="text-[10px] uppercase tracking-widest text-white/30 mb-2">Execution Mode</div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setExecutionMode('manual')}
+                  className={`flex-1 text-[10px] font-bold py-1.5 rounded-lg transition-all ${
+                    executionMode === 'manual'
+                      ? 'bg-primary/20 border border-primary/30 text-primary'
+                      : 'text-white/30 hover:bg-white/3'
+                  }`}
+                >
+                  <div className="flex items-center justify-center gap-1">
+                    <MousePointer2 size={12} />
+                    Manual
+                  </div>
+                </button>
+                <button
+                  onClick={() => setExecutionMode('select')}
+                  className={`flex-1 text-[10px] font-bold py-1.5 rounded-lg transition-all ${
+                    executionMode === 'select'
+                      ? 'bg-yellow-400/20 border border-yellow-400/30 text-yellow-400'
+                      : 'text-white/30 hover:bg-white/3'
+                  }`}
+                >
+                  <div className="flex items-center justify-center gap-1">
+                    <Wand2 size={12} />
+                    Select
+                  </div>
+                </button>
+                <button
+                  onClick={() => setExecutionMode('automate')}
+                  className={`flex-1 text-[10px] font-bold py-1.5 rounded-lg transition-all ${
+                    executionMode === 'automate'
+                      ? 'bg-purple-400/20 border border-purple-400/30 text-purple-400'
+                      : 'text-white/30 hover:bg-white/3'
+                  }`}
+                >
+                  <div className="flex items-center justify-center gap-1">
+                    <Cpu size={12} />
+                    Auto
+                  </div>
+                </button>
+              </div>
+            </div>
+          )}
+
           <div className="mb-4 rounded-lg border border-white/5 bg-white/5 p-3">
             <div className="text-[10px] uppercase tracking-widest text-white/30 mb-2">Connection Scope</div>
             <p className="text-xs text-white/60 leading-relaxed">
@@ -388,6 +555,64 @@ const RemoteView: React.FC<RemoteViewProps> = ({
                 : 'This session is running in view-only mode. Remote control is disabled by the recipient.'}
             </p>
           </div>
+
+          {/* Quick Actions */}
+          {canControl && (
+            <div className="mb-4 rounded-lg border border-white/5 bg-white/5 p-3">
+              <div className="text-[10px] uppercase tracking-widest text-white/30 mb-2">Quick Actions</div>
+              <div className="space-y-2">
+                <input
+                  type="text"
+                  value={pendingTypeText}
+                  onChange={(e) => setPendingTypeText(e.target.value)}
+                  placeholder="Type text here..."
+                  className="w-full px-2 py-1.5 rounded bg-black/20 text-xs text-white/80 border border-white/10 placeholder-white/30"
+                />
+                <button
+                  onClick={() => {
+                    if (pendingTypeText.trim()) {
+                      executeAction({
+                        stepId: 'quick',
+                        actionId: `type-${Date.now()}`,
+                        type: 'TYPE',
+                        text: pendingTypeText,
+                        riskLevel: 'LOW',
+                        timestamp: Date.now(),
+                      });
+                      setPendingTypeText('');
+                    }
+                  }}
+                  disabled={isExecuting}
+                  className="w-full text-xs py-1.5 rounded flex items-center justify-center gap-1 bg-primary/10 text-primary hover:bg-primary/20 border border-primary/30"
+                >
+                  <Type size={12} /> Send Text
+                </button>
+                <button
+                  onClick={() => {
+                    const img = captureFrame();
+                    if (img) {
+                      setCapturedImage(img);
+                      toast.success('Frame captured');
+                    }
+                  }}
+                  className="w-full text-xs py-1.5 rounded flex items-center justify-center gap-1 bg-white/5 text-white/60 hover:bg-white/10 border border-white/10"
+                >
+                  <Eye size={12} /> Capture Frame
+                </button>
+              </div>
+            </div>
+          )}
+
+          {capturedImage && (
+            <div className="mb-4">
+              <div className="text-[10px] uppercase tracking-widest text-white/30 mb-2">Captured Frame</div>
+              <img
+                src={capturedImage}
+                alt="Captured"
+                className="rounded-lg border border-white/10 w-full"
+              />
+            </div>
+          )}
 
           {actionPlan && actionPlan.length > 0 ? (
             <div className="space-y-2">
@@ -449,23 +674,35 @@ const RemoteView: React.FC<RemoteViewProps> = ({
           )}
         </div>
 
-        {/* Step navigation */}
+        {/* Step navigation + Execute */}
         {actionPlan && actionPlan.length > 0 && (
-          <div className="glass-card p-3 border-white/5 flex gap-2">
-            <button
-              onClick={() => setActiveStepIndex((i) => Math.max(0, i - 1))}
-              disabled={activeStepIndex === 0}
-              className="flex-1 btn-secondary text-xs py-2 disabled:opacity-30"
-            >
-              ← Prev
-            </button>
-            <button
-              onClick={() => setActiveStepIndex((i) => Math.min(actionPlan.length - 1, i + 1))}
-              disabled={activeStepIndex === actionPlan.length - 1}
-              className="flex-1 btn-primary text-xs py-2 disabled:opacity-30"
-            >
-              Next →
-            </button>
+          <div className="glass-card p-3 border-white/5 space-y-2">
+            <div className="flex gap-2">
+              <button
+                onClick={() => setActiveStepIndex((i) => Math.max(0, i - 1))}
+                disabled={activeStepIndex === 0}
+                className="flex-1 btn-secondary text-xs py-2 disabled:opacity-30"
+              >
+                ← Prev
+              </button>
+              <button
+                onClick={() => setActiveStepIndex((i) => Math.min(actionPlan.length - 1, i + 1))}
+                disabled={activeStepIndex === actionPlan.length - 1}
+                className="flex-1 btn-primary text-xs py-2 disabled:opacity-30"
+              >
+                Next →
+              </button>
+            </div>
+            {canControl && (
+              <button
+                onClick={executeCurrentStep}
+                disabled={isExecuting}
+                className="w-full text-xs py-2 rounded flex items-center justify-center gap-2 bg-primary text-black hover:bg-primary/90 font-bold"
+              >
+                <PlayCircle size={14} />
+                {isExecuting ? 'Executing...' : 'Execute Step'}
+              </button>
+            )}
           </div>
         )}
       </div>

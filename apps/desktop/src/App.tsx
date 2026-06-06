@@ -336,6 +336,12 @@ function App() {
         grantedPermissions: permissions,
       });
 
+      // 0. Set execution layer permissions (Electron only)
+      if ((window as any).electronAPI?.executionSetPermissions) {
+        await (window as any).electronAPI.executionSetPermissions(permissions);
+        console.log('[DEBUG CLIENT APP] Execution layer permissions set:', permissions);
+      }
+
       // 1. Get screen share stream
       let stream: MediaStream;
       try {

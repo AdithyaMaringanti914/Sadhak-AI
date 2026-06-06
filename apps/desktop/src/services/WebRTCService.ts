@@ -1,6 +1,7 @@
 import { io, Socket } from 'socket.io-client';
 
 const ICE_SERVERS: RTCIceServer[] = [
+  { urls: 'stun:stun.l.google.com:19302' },
 ];
 
 export class WebRTCService {
@@ -69,11 +70,14 @@ export class WebRTCService {
       console.log('[DEBUG] Offer already created for session. Skipping.');
       return;
     }
+    
     if (this.pc && this.pc.signalingState !== 'closed') {
-      console.log('[DEBUG] Peer connection already exists. Skipping offer creation.');
-      this.offerCreatedForSessionId = sessionId;
-      return;
+      console.log('[DEBUG] Closing existing peer connection to start fresh.');
+      this.pc.close();
+      this.pc = null;
+      this.dataChannel = null;
     }
+
     this.offerCreatedForSessionId = sessionId;
     console.log('[DEBUG] Helper creating WebRTC offer');
     this.pc = this.buildPeerConnection(sessionId);
@@ -101,6 +105,14 @@ export class WebRTCService {
   async handleSignal(sessionId: string, data: any) {
     console.log(`[DEBUG CLIENT/SERVER] handleSignal called, data keys: ${Object.keys(data).join(', ')}`);
 
+    // If we get a new offer, destroy any existing peer connection to avoid RTP extension collisions
+    if (data.offer && this.pc && this.pc.signalingState !== 'closed') {
+      console.log('[DEBUG CLIENT] Destroying existing peer connection to avoid RTP extension collisions');
+      this.pc.close();
+      this.pc = null;
+      this.dataChannel = null;
+    }
+
     // Lazily create the peer connection on the Client side when first signal arrives
     if (!this.pc) {
       console.log('[DEBUG CLIENT] Creating peer connection for the first time');
@@ -116,8 +128,6 @@ export class WebRTCService {
       } else {
         console.log('[DEBUG CLIENT] NO pending stream — this is bad (client never captured screen share?)');
       }
-    } else {
-      console.log('[DEBUG CLIENT] Peer connection already exists');
     }
 
     if (data.offer) {
@@ -198,7 +208,7 @@ export class WebRTCService {
       iceCandidatePoolSize: 0,
     });
 
-    console.log('[DEBUG] buildPeerConnection: created new RTCPeerConnection (NO STUN, same-machine only)');
+    console.log('[DEBUG] buildPeerConnection: created new RTCPeerConnection with Google STUN server');
 
     // Forward ICE candidates through the signaling server
     pc.onicecandidate = ({ candidate }) => {
