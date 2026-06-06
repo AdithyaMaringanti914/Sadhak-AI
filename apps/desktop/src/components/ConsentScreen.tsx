@@ -11,7 +11,7 @@ import {
   Sparkles,
   ShieldCheck,
 } from 'lucide-react';
-import type { SessionPermissions } from '../store/sessionStore';
+import type { SessionPermissions } from '@shared/types';
 
 interface ConsentScreenProps {
   session: {
@@ -176,10 +176,10 @@ const ConsentScreen: React.FC<ConsentScreenProps> = ({
                     type="button"
                     disabled={!isRequested || isConnecting}
                     onClick={() =>
-                      setSelectedPermissions((current) => ({
+                      setSelectedPermissions((current: SessionPermissions) => ({
                         ...current,
                         [permission.key]: !current[permission.key],
-                      }))
+                      } as SessionPermissions))
                     }
                     className={`w-12 h-6 rounded-full p-1 transition-colors ${
                       enabled ? 'bg-primary/30' : 'bg-white/10'

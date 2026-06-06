@@ -204,7 +204,6 @@ export class WebRTCService {
     const pc = new RTCPeerConnection({
       iceServers: ICE_SERVERS,
       iceTransportPolicy: 'all',
-      sdpSemantics: 'unified-plan',
       iceCandidatePoolSize: 0,
     });
 

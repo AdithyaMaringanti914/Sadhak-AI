@@ -616,7 +616,7 @@ const RemoteView: React.FC<RemoteViewProps> = ({
 
           {actionPlan && actionPlan.length > 0 ? (
             <div className="space-y-2">
-              {actionPlan.map((step, i) => {
+              {actionPlan.map((step, i: number) => {
                 const isDone = i < activeStepIndex;
                 const isActive = i === activeStepIndex;
                 return (
@@ -679,14 +679,14 @@ const RemoteView: React.FC<RemoteViewProps> = ({
           <div className="glass-card p-3 border-white/5 space-y-2">
             <div className="flex gap-2">
               <button
-                onClick={() => setActiveStepIndex((i) => Math.max(0, i - 1))}
+                onClick={() => setActiveStepIndex((i: number) => Math.max(0, i - 1))}
                 disabled={activeStepIndex === 0}
                 className="flex-1 btn-secondary text-xs py-2 disabled:opacity-30"
               >
                 ← Prev
               </button>
               <button
-                onClick={() => setActiveStepIndex((i) => Math.min(actionPlan.length - 1, i + 1))}
+                onClick={() => setActiveStepIndex((i: number) => Math.min(actionPlan.length - 1, i + 1))}
                 disabled={activeStepIndex === actionPlan.length - 1}
                 className="flex-1 btn-primary text-xs py-2 disabled:opacity-30"
               >
