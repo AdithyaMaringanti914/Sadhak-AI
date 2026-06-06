@@ -13,7 +13,7 @@ import {
   DEFAULT_REQUESTED_PERMISSIONS,
   useSessionStore,
 } from './store/sessionStore';
-import type { SessionPermissions } from './store/sessionStore';
+import type { SessionPermissions } from '@shared/types';
 import { WebRTCService } from './services/WebRTCService';
 import { Toaster, toast } from 'sonner';
 

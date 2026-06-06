@@ -32,7 +32,7 @@ interface SessionState {
 
   setSession: (data: Partial<SessionState>) => void;
   resetSession: () => void;
-  setActiveStepIndex: (index: number) => void;
+  setActiveStepIndex: (index: number | ((prev: number) => number)) => void;
 }
 
 export const useSessionStore = create<SessionState>((set) => ({
@@ -63,5 +63,10 @@ export const useSessionStore = create<SessionState>((set) => ({
       grantedPermissions: null,
       activeStepIndex: 0,
     }),
-  setActiveStepIndex: (index) => set({ activeStepIndex: index }),
+  setActiveStepIndex: (index) => 
+    set((state) => ({ 
+      activeStepIndex: typeof index === 'function' 
+        ? index(state.activeStepIndex) 
+        : index 
+    })),
 }));
